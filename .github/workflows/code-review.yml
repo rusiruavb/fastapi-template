@@ -1,0 +1,73 @@
+name: CI/CD Pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      matrix:
+        python-version: ["3.11"] # Reduced to single version to prevent resource conflicts
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip --no-cache-dir
+          pip install --no-cache-dir -r requirements-dev.txt
+          pip install --no-cache-dir httpx pytest-cov coverage
+        timeout-minutes: 10
+        continue-on-error: true
+
+      - name: Retry dependency installation if failed
+        if: failure()
+        run: |
+          echo "Retrying dependency installation..."
+          python -m pip install --upgrade pip --no-cache-dir
+          pip install --no-cache-dir -r requirements-dev.txt
+        timeout-minutes: 15
+
+      - name: Run Tests
+        run: |
+          pytest --cov-report=xml --cov-report=html
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Upload Coverage Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: htmlcov/
+
+      - name: Report Code Coverage
+        run: |
+          coverage report

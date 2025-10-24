@@ -1,0 +1,111 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "FastAPI-ai-api"
+version = "1.0.0"
+description = "A FastAPI API for FastAPI AI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+keywords = ["fastapi", "postgresql", "mongodb", "jwt", "template"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.4.0",
+    "pydantic-settings>=2.0.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.12.0",
+    "asyncpg>=0.29.0",
+    "motor>=3.3.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib>=1.7.4",
+    "python-multipart>=0.0.20",
+    "python-dotenv>=1.0.0",
+    "email-validator>=2.1.0",
+    "greenlet>=3.2.4",
+    "bcrypt>=4.0.0",
+    "langchain-community>=0.3",
+    "pymupdf>=1.26.5",
+    "pandas>=2.3.3",
+    "pdfplumber>=0.11.7",
+    "langchain-pymupdf4llm>=0.4.1",
+    "langchain-openai>=0.3.35",
+    "langchain-experimental>=0.3.4",
+    "rich>=14.2.0",
+    "langchain-google-genai>=2.1.12",
+    "pytesseract>=0.3.13",
+    "langchain-chroma>=0.2.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "coverage>=7.0.0",
+    "httpx>=0.25.0",
+    "watchfiles>=0.20.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/FastAPI-ai-api"
+Repository = "https://github.com/yourusername/FastAPI-ai-api"
+Documentation = "https://github.com/yourusername/FastAPI-ai-api#readme"
+Issues = "https://github.com/yourusername/FastAPI-ai-api/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pdm.scripts]
+dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+migrate = "alembic upgrade head"
+migrate-down = "alembic downgrade -1"
+test = "pytest"
+clean = "find . -type d -name '__pycache__' -exec rm -rf {} + -o -name '*.pyc' -delete -o -name '*.pyo' -delete"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --cov=app --cov-report=term-missing"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "*/tests/*",
+    "*/migrations/*",
+    "*/alembic/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
