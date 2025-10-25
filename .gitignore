@@ -180,3 +180,4 @@ logs/
 vector_store/
 *.bin
 *.sqlite
+chromadb/
