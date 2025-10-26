@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # LLM
     openai_api_key: str = ""
     google_gemini_api_key: str = ""
+    llama_api_key: str = ""
 
     # API
     api_v1_prefix: str = "/api/v1"

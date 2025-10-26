@@ -10,11 +10,11 @@ from app.services.document_service import DocumentService
 
 
 async def get_openai_embedding_client(
-    model: Optional[OPENAI_EMBEDDING_MODEL_OPTIONS] = Query(
+    embedding_model: Optional[OPENAI_EMBEDDING_MODEL_OPTIONS] = Query(
         default="text-embedding-3-large", description="OpenAI embedding model to use"
     ),
 ) -> OpenAIEmbeddings:
-    return ClientFactory.get_openai_embedding_client(model=model)
+    return ClientFactory.get_openai_embedding_client(model=embedding_model)
 
 
 async def get_openai_llm_client(

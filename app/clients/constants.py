@@ -26,9 +26,10 @@ VECTOR_PROVIDERS = Literal["chroma"]
 # OpenAI LLM Models
 OPENAI_MODEL_OPTIONS = Literal[
     "gpt-5",
+    "gpt-5-mini",
     "gpt-4o-mini",
     "gpt-4o",
-    "gpt-4o-turbo",
+    "gpt-4-turbo",
     "gpt-4o-turbo-preview",
 ]
 
