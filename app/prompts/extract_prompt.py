@@ -207,3 +207,35 @@ find_relevant_chunk_prompt = ChatPromptTemplate.from_messages(
         ),
     ]
 )
+
+post_process_text_prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """
+            You are a precise content extractor. You will be given a text and you must extract the content in a structured format. You must follow the rules defined below.
+
+            The structured output is as follows:
+            - title: The title of the content
+            - content: The content of the content
+
+            ### Rules:
+            1. You must not change the wording of the text.
+            2. You must not add any new information to the text.
+            3. You must not change the title of the content.
+            4. If there are web urls in the text, you must include them as in markdown links.
+            5. Web urls should be included in the content, not in the footers.
+            6. If there are web links that are that are not in the text (e.g. in the footer, in the header), you must include them as in markdown links and rename as "More Information".
+            7. If there are tables in the text, you must include them as in markdown tables with proper markdown formatting.
+            8. In the table cells, if there are break link <br> tags you must remove them and join the text after the <br> tag to the text before the <br> tag.
+            9. In the table cells, if there are unnecessary whitespaces remove unnecessary whitespace and newlines.
+            10. In the table cells, if there are unnecessary characters and symbols remove them.
+            11. In the table, if there are merged cells, you must include them as in markdown tables with proper markdown formatting.
+            """,
+        ),
+        (
+            "user",
+            "Extract the content from the following text:\n{text}",
+        ),
+    ]
+)
