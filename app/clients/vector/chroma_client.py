@@ -1,6 +1,7 @@
 from typing import Optional, Any
 from langchain_chroma import Chroma
 from app.clients.base_client import BaseClient
+from app.core.config import settings
 
 
 class ChromaClient(BaseClient[Chroma]):
@@ -17,7 +18,9 @@ class ChromaClient(BaseClient[Chroma]):
         self.client: Chroma = Chroma(
             collection_name=collection_name,
             embedding_function=embeddings,
-            persist_directory=persist_directory,
+            chroma_cloud_api_key=settings.chroma_api_key,
+            tenant=settings.chroma_tenant,
+            database=settings.chroma_database,
             **kwargs,
         )
 

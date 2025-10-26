@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     mongodb_url: str = "mongodb://localhost:27017"
     mongodb_database: str = "fastapi_mongo"
 
+    # Database - Chroma
+    chroma_api_key: str = ""
+    chroma_tenant: str = ""
+    chroma_database: str = ""
+
     # Redis (for caching/sessions)
     redis_url: str = "redis://localhost:6379"
 

@@ -25,7 +25,9 @@ async def get_openai_llm_client(
     return ClientFactory.get_openai_llm_client(model=model)
 
 
-async def get_chroma_vector_client(embeddings: OpenAIEmbeddings) -> Chroma:
+async def get_chroma_vector_client(
+    embeddings: OpenAIEmbeddings = Depends(get_openai_embedding_client),
+) -> Chroma:
     return ClientFactory.get_chroma_vector_client(embeddings=embeddings)
 
 
