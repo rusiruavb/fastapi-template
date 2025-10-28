@@ -1,27 +1,32 @@
-from typing import Annotated, List
-from pydantic import BaseModel, Field
-
-import operator
-from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
-
-from langgraph.graph import StateGraph, START, END, add_messages
+from typing import Annotated, List, Literal
+from langchain_core.documents import Document
+from langgraph.graph import StateGraph, MessagesState, START, END, add_messages
 from langgraph.graph.message import BaseMessage
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
-
+from pydantic import BaseModel, Field
 from IPython.display import Image, display
+from langgraph.graph import MessagesState
 
+GRADE_PROMPT = (
+    "You are a grader assessing relevance of a retrieved document to a user question. \n "
+    "Here is the retrieved document: \n\n {context} \n\n"
+    "Here is the user question: {question} \n"
+    "If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. \n"
+    "Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."
+)
 
-# -------- Constants --------
-NUM_QUERY_EXPANSIONS: int = 3
-RETRIEVER_K: int = 12
-MAX_CONTEXT_CHUNKS: int = 12
-
-GRADE_PROMPT = None
-REWRITE_PROMPT = None
+REWRITE_PROMPT = (
+    "Look at the input and try to reason about the underlying semantic intent / meaning.\n"
+    "Here is the initial question:"
+    "\n ------- \n"
+    "{question}"
+    "\n ------- \n"
+    "Formulate an improved question:"
+)
 
 GENERATE_PROMPT = (
     "You are an assistant for question-answering tasks. "
@@ -32,162 +37,123 @@ GENERATE_PROMPT = (
     "Context: {context}"
 )
 
-MULTI_QUERY_PROMPT = (
-    "Generate {n} diverse reformulations of the following question that could retrieve different relevant documents.\n"
-    "Return each variation on a new line, concise but semantically distinct.\n\n"
-    "Question: {question}"
+MAX_REWRITES = 2
+
+SYSTEM_TOOL_INSTRUCTION = (
+    "You are part of a retrieval-augmented system. "
+    "Before answering, you MUST call the `retrieve_documents` tool with the user's question "
+    "to fetch context from the vector store. Do not answer without first retrieving."
 )
+
+
+class GradeDocuments(BaseModel):
+    binary_score: str = Field(
+        description="Relevance score: 'yes' if relevant, or 'no' if not relevant"
+    )
 
 
 class RAGAgentState(BaseModel):
     messages: Annotated[List[BaseMessage], add_messages]
-    context_text: Annotated[str, operator.add] = ""
+    rewrites: int = 0
 
 
 class RAGAgent:
     def __init__(self, vector_store_retriever: VectorStoreRetriever, llm: ChatOpenAI):
         self.vector_store_retriever = vector_store_retriever
         self.llm = llm
-        self.graph = StateGraph[RAGAgentState, None, RAGAgentState, RAGAgentState](
-            state_schema=RAGAgentState
-        )
+        self.graph = StateGraph(MessagesState)
 
     @tool(
         response_format="content_and_artifact",
-        description="Retrieve documents from the vector store",
+        description="Retrieve documents from the vector store given a natural language query.",
     )
-    def _retrieve_documents(self, query: str) -> List[Document]:
-        return self.vector_store_retriever.invoke(input=query)
-
-    # -------- Helpers to access state messages safely --------
-
-    def _get_user_question(self, state: RAGAgentState) -> str:
-        for m in state.messages:
-            if getattr(m, "type", "") == "human":
-                return str(m.content)
-        return str(state.messages[0].content) if state.messages else ""
-
-    def _get_retrieved_docs(self, state: RAGAgentState) -> List[Document]:
-        for m in reversed(state.messages):
-            if (
-                getattr(m, "type", "") == "tool"
-                and getattr(m, "name", "") == "_retrieve_documents"
-            ):
-                artifact = getattr(m, "artifact", None)
-                if (
-                    isinstance(artifact, list)
-                    and artifact
-                    and isinstance(artifact[0], Document)
-                ):
-                    return artifact  # List[Document]
-                return []
-        return []
-
-    def _docs_to_context(self, docs: List[Document]) -> str:
-        if not docs:
-            return ""
-        return "\n\n".join(
-            [d.page_content for d in docs if getattr(d, "page_content", None)]
+    def retrieve_documents(self, query: str) -> str:
+        docs = self.vector_store_retriever.get_relevant_documents(query)
+        print(docs)
+        context = "\n\n".join(
+            d.page_content for d in docs if getattr(d, "page_content", None)
         )
+        return context
 
-    def _expand_queries(self, question: str, n: int) -> List[str]:
-        try:
-            prompt = MULTI_QUERY_PROMPT.format(question=question, n=n)
-            resp = self.llm.invoke([{"role": "user", "content": prompt}])
-            lines = [ln.strip(" -\t") for ln in resp.content.splitlines()]
-            variations = [ln for ln in lines if ln]
-            # Ensure uniqueness and cap to n
-            unique: List[str] = []
-            for v in variations:
-                if v not in unique:
-                    unique.append(v)
-                if len(unique) >= n:
-                    break
-            return unique
-        except Exception:
-            return []
+    def generate_query_or_respond(self, state: RAGAgentState) -> RAGAgentState:
+        response = self.llm.bind_tools([self.retrieve_documents]).invoke(state.messages)
+        print(response)
+        return {"messages": [response]}
 
-    def _dedupe_docs(self, docs: List[Document]) -> List[Document]:
-        seen_keys = set()
-        deduped: List[Document] = []
-        for d in docs:
-            meta = getattr(d, "metadata", {}) or {}
-            key = (
-                meta.get("id")
-                or meta.get("source")
-                or meta.get("doc_id")
-                or d.page_content[:200]
-            )
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            deduped.append(d)
-        return deduped[:MAX_CONTEXT_CHUNKS]
+    def grade_documents(
+        self, state: RAGAgentState
+    ) -> Literal["generate_answer", "rewrite_question", "no_answer"]:
+        question = state.messages[0].content
+        context = state.messages[-1].content
 
-    # -------- Nodes --------
+        # If retrieval returned nothing, bail out or try limited rewrites
+        if not str(context).strip():
+            if state.rewrites >= MAX_REWRITES:
+                return "no_answer"
+            return "rewrite_question"
 
-    def _retrieve(self, state: RAGAgentState) -> RAGAgentState:
-        # Deterministically retrieve using the current user question
-        question = self._get_user_question(state)
+        prompt = GRADE_PROMPT.format(question=question, context=context)
+        response = self.llm.with_structured_output(GradeDocuments).invoke(
+            [{"role": "user", "content": prompt}]
+        )
+        score = response.binary_score
 
-        # Try to tune retriever for higher recall (best-effort; attributes may not exist)
-        try:
-            if hasattr(self.vector_store_retriever, "search_kwargs"):
-                self.vector_store_retriever.search_kwargs.update(
-                    {
-                        "k": RETRIEVER_K,
-                        "fetch_k": max(RETRIEVER_K * 3, 20),
-                        "lambda_mult": 0.5,  # for MMR if supported
-                    }
-                )
-            if hasattr(self.vector_store_retriever, "search_type"):
-                # switch to mmr if available
-                setattr(self.vector_store_retriever, "search_type", "mmr")
-            if hasattr(self.vector_store_retriever, "k"):
-                setattr(self.vector_store_retriever, "k", RETRIEVER_K)
-        except Exception:
-            pass
+        if score == "yes":
+            return "generate_answer"
+        if state.rewrites >= MAX_REWRITES:
+            return "no_answer"
+        return "rewrite_question"
 
-        # Multi-query expansion
-        variations = self._expand_queries(question, NUM_QUERY_EXPANSIONS)
-        queries = [question] + [v for v in variations if v and v != question]
+    def rewrite_question(self, state: RAGAgentState) -> RAGAgentState:
+        messages = state.messages
+        question = messages[0].content
+        prompt = REWRITE_PROMPT.format(question=question)
+        response = self.llm.invoke([{"role": "user", "content": prompt}])
+        return {
+            "messages": [{"role": "user", "content": response.content}],
+            "rewrites": state.rewrites + 1,
+        }
 
-        all_docs: List[Document] = []
-        for q in queries:
-            try:
-                batch = self.vector_store_retriever.invoke(input=q)
-                if isinstance(batch, list):
-                    all_docs.extend(batch)
-            except Exception:
-                continue
-
-        if not all_docs:
-            context = ""
-        else:
-            context = self._docs_to_context(self._dedupe_docs(all_docs))
-        return {"context_text": context}
-
-    # Removed grading/rewrite/give_up for simplified 2-node flow
-
-    def _generate_answer(self, state: RAGAgentState) -> RAGAgentState:
-        question = self._get_user_question(state)
-        context = state.context_text or ""
+    def generate_answer(self, state: RAGAgentState) -> RAGAgentState:
+        question = state.messages[0].content
+        context = state.messages[-1].content
         prompt = GENERATE_PROMPT.format(question=question, context=context)
         response = self.llm.invoke([{"role": "user", "content": prompt}])
-        return {"messages": [response]}
+        return {"messages": [response], "rewrites": state.rewrites}
+
+    def no_answer(self, state: RAGAgentState) -> RAGAgentState:
+        return {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "I couldn't find relevant context to answer this. Please try rephrasing or provide more details.",
+                }
+            ],
+            "rewrites": state.rewrites,
+        }
 
     def get_graph(
         self,
     ) -> CompiledStateGraph[RAGAgentState, None, RAGAgentState, RAGAgentState]:
-        self.graph.add_node("retrieve", self._retrieve)
-        self.graph.add_node("gen_answer", self._generate_answer)
+        self.graph.add_node("generate_query_or_respond", self.generate_query_or_respond)
+        self.graph.add_node("retrieve", ToolNode([self.retrieve_documents]))
+        self.graph.add_node("rewrite_question", self.rewrite_question)
+        self.graph.add_node("generate_answer", self.generate_answer)
+        self.graph.add_node("no_answer", self.no_answer)
 
-        self.graph.add_edge(START, "retrieve")
-        self.graph.add_edge("retrieve", "gen_answer")
-        self.graph.add_edge("gen_answer", END)
+        self.graph.add_edge(START, "generate_query_or_respond")
+        self.graph.add_edge("generate_query_or_respond", "retrieve")
+        self.graph.add_conditional_edges(
+            "retrieve",
+            self.grade_documents,
+        )
+        self.graph.add_edge("generate_answer", END)
+        self.graph.add_edge("no_answer", END)
+        self.graph.add_edge("rewrite_question", "generate_query_or_respond")
 
         graph = self.graph.compile()
-        # write the graph to a file
+
         with open("rag_graph.png", "wb") as f:
             f.write(graph.get_graph().draw_mermaid_png())
+
         return graph
