@@ -1,5 +1,6 @@
-from typing import Optional, Any
+from typing import Literal, Optional, Any
 from langchain_chroma import Chroma
+from langchain_core.vectorstores import VectorStoreRetriever
 from app.clients.base_client import BaseClient
 from app.core.config import settings
 
@@ -26,3 +27,8 @@ class ChromaClient(BaseClient[Chroma]):
 
     def get_client(self) -> Chroma:
         return self.client
+
+    def get_vector_store_retriever(
+        self, k: int = 4, search_type: Literal["mmr", "similarity"] = "mmr"
+    ) -> VectorStoreRetriever:
+        return self.client.as_retriever(search_type=search_type, k=k)

@@ -50,6 +50,6 @@ class ClientFactory:
             if embeddings is None:
                 raise ValueError("Embeddings are not set")
 
-            return ChromaClient(embeddings=embeddings, **kwargs).get_client()
+            return ChromaClient(embeddings=embeddings, **kwargs)
         except Exception as e:
             raise ValueError(f"Error creating Chroma vector client: {e}")

@@ -1,5 +1,6 @@
 from fastapi import Depends, Query
 from langchain_chroma import Chroma
+from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from app.clients import ClientFactory
 from app.clients.constants import OPENAI_MODEL_OPTIONS, OPENAI_EMBEDDING_MODEL_OPTIONS
@@ -28,7 +29,15 @@ async def get_openai_llm_client(
 async def get_chroma_vector_client(
     embeddings: OpenAIEmbeddings = Depends(get_openai_embedding_client),
 ) -> Chroma:
-    return ClientFactory.get_chroma_vector_client(embeddings=embeddings)
+    return ClientFactory.get_chroma_vector_client(embeddings=embeddings).get_client()
+
+
+async def get_vector_store_retriever(
+    embeddings: OpenAIEmbeddings = Depends(get_openai_embedding_client),
+) -> VectorStoreRetriever:
+    return ClientFactory.get_chroma_vector_client(
+        embeddings=embeddings
+    ).get_vector_store_retriever()
 
 
 async def get_chunk_service(

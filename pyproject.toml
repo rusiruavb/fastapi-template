@@ -51,6 +51,8 @@ dependencies = [
     "pytesseract>=0.3.13",
     "langchain-chroma>=0.2.6",
     "llama-cloud-services>=0.6.76",
+    "langgraph>=1.0.1",
+    "ipython>=9.6.0",
 ]
 
 [project.optional-dependencies]
