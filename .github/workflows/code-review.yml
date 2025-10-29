@@ -35,22 +35,24 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
+        id: install-deps
         run: |
           python -m pip install --upgrade pip --no-cache-dir
-          pip install --no-cache-dir -r requirements-dev.txt
-          pip install --no-cache-dir httpx pytest-cov coverage
+          pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
         timeout-minutes: 10
         continue-on-error: true
 
       - name: Retry dependency installation if failed
-        if: failure()
+        id: retry-deps
+        if: steps.install-deps.outcome == 'failure'
         run: |
           echo "Retrying dependency installation..."
           python -m pip install --upgrade pip --no-cache-dir
-          pip install --no-cache-dir -r requirements-dev.txt
+          pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
         timeout-minutes: 15
 
       - name: Run Tests
+        if: steps.install-deps.outcome == 'success' || steps.retry-deps.outcome == 'success'
         run: |
           pytest --cov-report=xml --cov-report=html
 
